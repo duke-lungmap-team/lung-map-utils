@@ -307,7 +307,12 @@ def find_rect_union(rect_list):
 
 
 def get_class_map(train_dir):
-    class_paths = glob.glob("/".join([train_dir, "*"]))
+    class_paths = []
+
+    for path in sorted(glob.glob("/".join([train_dir, "*"]))):
+        if os.path.isdir(path):
+            class_paths.append(path)
+
     class_map = {}
 
     for i, class_path in enumerate(sorted(class_paths)):
@@ -340,7 +345,12 @@ def get_image_metadata(metadata, source_file_name):
 
 
 def load_training_data(train_dir):
-    class_paths = glob.glob("/".join([train_dir, "*"]))
+    class_paths = []
+
+    for path in sorted(glob.glob("/".join([train_dir, "*"]))):
+        if os.path.isdir(path):
+            class_paths.append(path)
+
     class_map = {}
 
     ss = []
@@ -459,7 +469,7 @@ def get_custom_target_features(hsv_img):
 
     target_features = pd.Series(values, index=feature_names)
 
-    return target_features
+    return target_features.sort_index()
 
 
 def predict(input_dict):
