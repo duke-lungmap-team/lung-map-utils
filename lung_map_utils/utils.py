@@ -13,7 +13,7 @@ from sklearn.svm import SVC
 from sklearn.linear_model import RidgeClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import SelectFdr, SelectKBest
+from sklearn.feature_selection import SelectFdr
 from wndcharm.FeatureVector import FeatureVector
 from scipy.spatial.distance import pdist
 import warnings
@@ -525,7 +525,7 @@ def get_custom_color_features(hsv_img, show_plots=False):
 
         mask_img = cv2.bitwise_and(hsv_img, hsv_img, mask=mask)
 
-        if  show_plots:
+        if show_plots:
             fig, (ax1, ax2) = plt.subplots(1, 2)
             plt.title(color)
             ax1.imshow(cv2.cvtColor(mask_img, cv2.COLOR_HSV2RGB))
@@ -552,21 +552,29 @@ def get_custom_color_features(hsv_img, show_plots=False):
                 'area_variance': 0.0,
                 'perimeter_mean': 0.0,
                 'perimeter_variance': 0.0,
-                'largest_contour_area': 0.0
+                'largest_contour_area': 0.0,
+                'largest_contour_eccentricity': 0.0,
+                'largest_contour_circularity': 0.0,
+                'largest_contour_convexity': 0.0
             }
             continue
 
         largest_contour_area = 0.0
+        largest_contour_peri = 0.0
+        largest_contour = None
 
         for c in contours:
             area = cv2.contourArea(c)
+
+            if area <= 0.0:
+                continue
+
             peri = cv2.arcLength(c, True)
 
             if area > largest_contour_area:
                 largest_contour_area = area
-
-            if area == 0.0:
-                continue
+                largest_contour_peri = peri
+                largest_contour = c
 
             m = cv2.moments(c)
             centroid_x = m['m10'] / m['m00']
@@ -598,6 +606,26 @@ def get_custom_color_features(hsv_img, show_plots=False):
             peri_mean = np.mean(peri_list)
             peri_var = np.var(peri_list)
 
+        largest_contour_eccentricity = 0.0
+        largest_contour_circularity = 0.0
+        largest_contour_convexity = 0.0
+
+        if largest_contour_area >= 0.02 * tot_px and largest_contour is not None:
+            # get smallest bounding rectangle (rotated)
+            box = cv2.minAreaRect(largest_contour)
+            cnt_w, cnt_h = box[1]
+
+            largest_contour_eccentricity = cnt_w / cnt_h
+            if largest_contour_eccentricity < 1:
+                largest_contour_eccentricity = 1.0 / largest_contour_eccentricity
+
+            # calculate inverse circularity as 1 / (area / perimeter ^ 2)
+            largest_contour_circularity = largest_contour_peri / np.sqrt(largest_contour_area)
+
+            # calculate convexity as convex hull perimeter / contour perimeter
+            hull = cv2.convexHull(largest_contour)
+            largest_contour_convexity = cv2.arcLength(hull, True) / largest_contour_peri
+
         color_features[color] = {
             'percent': color_percent,
             'contour_count': len(cent_list),
@@ -607,7 +635,10 @@ def get_custom_color_features(hsv_img, show_plots=False):
             'area_variance': area_var,
             'perimeter_mean': peri_mean,
             'perimeter_variance': peri_var,
-            'largest_contour_area': largest_contour_area
+            'largest_contour_area': largest_contour_area,
+            'largest_contour_eccentricity': largest_contour_eccentricity,
+            'largest_contour_circularity': largest_contour_circularity,
+            'largest_contour_convexity': largest_contour_convexity
         }
 
     return color_features
