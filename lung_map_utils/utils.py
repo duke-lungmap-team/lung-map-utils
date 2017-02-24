@@ -12,7 +12,7 @@ from sklearn.grid_search import GridSearchCV
 from sklearn.svm import SVC
 from sklearn.linear_model import RidgeClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_selection import SelectFdr
 from wndcharm.FeatureVector import FeatureVector
 from scipy.spatial.distance import pdist
@@ -407,7 +407,8 @@ def build_trained_model(training_data, classifier='svc'):
         raise NotImplementedError("Only 'svc' (default) and 'ridge' classifiers are supported")
 
     pipe = Pipeline([
-        ('standard_scalar', StandardScaler()),
+        ('scaler', StandardScaler()),
+        # ('scaler', RobustScaler()),
         ('feature_selection', SelectFdr()),
         # ('feature_selection', SelectKBest(k=400)),
         ('classification', clf)
@@ -644,13 +645,16 @@ def get_custom_color_features(hsv_img, show_plots=False):
     return color_features
 
 
-def write_custom_sig_file(img_path, target_features):
+def write_custom_sig_file(img_path, target_features, suffix=None):
     m = re.search("(.*)\.(tif)$", img_path)
 
     g = m.groups()
 
     if len(g) > 0:
-        sig_file = '{0}.sig'.format(g[0])
+        if suffix is None:
+            sig_file = '{0}.sig'.format(g[0])
+        else:
+            sig_file = '{0}_{1}.sig'.format(g[0], suffix)
 
         with open(sig_file, 'w') as f:
             f.write('custom features\n')
