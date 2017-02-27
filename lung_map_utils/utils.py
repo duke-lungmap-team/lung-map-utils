@@ -202,7 +202,7 @@ def determine_hist_mode(sat_channel):
     return lower_bound, upper_bound
 
 
-def get_hsv(hsv_img):
+def get_hsv(hsv_img, mask=None):
     """
     Returns flattened hue, saturation, and values from given HSV image.
     """
@@ -210,15 +210,23 @@ def get_hsv(hsv_img):
     sat = hsv_img[:, :, 1].flatten()
     val = hsv_img[:, :, 2].flatten()
 
+    if mask is not None:
+        flat_mask = mask.flatten()
+
+        hue = hue[flat_mask > 0]
+        sat = sat[flat_mask > 0]
+        val = val[flat_mask > 0]
+
     return hue, sat, val
 
 
-def get_color_profile(hsv_img):
+def get_color_profile(hsv_img, mask=None):
     """
     Finds color profile as pixel counts for color ranges in HSV_RANGES
 
     Args:
         hsv_img: HSV pixel data (3-D NumPy array)
+        mask: optional mask to apply to hsv_img
 
     Returns:
         Text string for dominant color range (from HSV_RANGES keys)
@@ -226,7 +234,9 @@ def get_color_profile(hsv_img):
     Raises:
         tbd
     """
-    h, s, v = get_hsv(hsv_img)
+
+    # TODO: take h, s, v as separate args to avoid multiple calls to get_hsv()...also eliminates mask arg
+    h, s, v = get_hsv(hsv_img, mask)
 
     color_profile = {}
 
@@ -440,27 +450,28 @@ def get_target_features(region, rect_index):
     return target_features
 
 
-def get_custom_target_features(hsv_img):
-    color_features = get_custom_color_features(hsv_img)
+def get_custom_target_features(hsv_img, mask=None, show_plots=False):
+    h, s, v = get_hsv(hsv_img, mask)
+    color_features = get_custom_color_features(hsv_img, mask=mask, show_plots=show_plots)
 
     feature_names = []
     values = []
 
     # add region features first
     feature_names.append('region_area')
-    values.append(hsv_img.shape[0] * hsv_img.shape[1])
+    values.append(len(h))
 
     feature_names.append('region_saturation_mean')
-    values.append(np.mean(hsv_img[:, :, 1]))
+    values.append(np.mean(s))
 
     feature_names.append('region_saturation_variance')
-    values.append(np.var(hsv_img[:, :, 1]))
+    values.append(np.var(s))
 
     feature_names.append('region_value_mean')
-    values.append(np.mean(hsv_img[:, :, 2]))
+    values.append(np.mean(v))
 
     feature_names.append('region_value_variance')
-    values.append(np.var(hsv_img[:, :, 2]))
+    values.append(np.var(v))
 
     for color, features in color_features.iteritems():
         for feature, value in sorted(features.iteritems()):
@@ -511,28 +522,35 @@ def predict(input_dict):
     return rect_index, class_map[target_prediction[0]], sorted_probabilities
 
 
-def get_custom_color_features(hsv_img, show_plots=False):
-    c_prof = get_color_profile(hsv_img)
+def get_custom_color_features(hsv_img, mask=None, show_plots=False):
+    c_prof = get_color_profile(hsv_img, mask)
 
-    tot_px = hsv_img.shape[0] * hsv_img.shape[1]
+    if mask is not None:
+        tot_px = np.sum(mask > 0)
+    else:
+        tot_px = hsv_img.shape[0] * hsv_img.shape[1]
 
     color_features = {}
 
     for color in HSV_RANGES.keys():
         color_percent = float(c_prof[color]) / tot_px
 
-        # create color mask
-        mask = create_mask(hsv_img, [color])
+        # create color mask & apply it
+        color_mask = create_mask(hsv_img, [color])
+        mask_img = cv2.bitwise_and(hsv_img, hsv_img, mask=color_mask)
 
-        mask_img = cv2.bitwise_and(hsv_img, hsv_img, mask=mask)
+        # apply user specified mask
+        if mask is not None:
+            mask_img = cv2.bitwise_and(mask_img, mask_img, mask=mask)
+            color_mask = cv2.bitwise_and(color_mask, color_mask, mask=mask)
 
         if show_plots:
             fig, (ax1, ax2) = plt.subplots(1, 2)
             plt.title(color)
             ax1.imshow(cv2.cvtColor(mask_img, cv2.COLOR_HSV2RGB))
-            ax2.imshow(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB))
+            ax2.imshow(cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB))
 
-        ret, thresh = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+        ret, thresh = cv2.threshold(color_mask, 1, 255, cv2.THRESH_BINARY)
         new_mask, contours, hierarchy = cv2.findContours(
             thresh,
             cv2.RETR_EXTERNAL,
