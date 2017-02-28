@@ -450,6 +450,15 @@ def get_target_features(region, rect_index):
     return target_features
 
 
+def get_target_features_from_tif(tif_file):
+    target_fv = FeatureVector(name='FromTiff', long=True, color=True, source_filepath=tif_file)
+    target_fv.GenerateFeatures(quiet=True, write_to_disk=False)
+
+    target_features = pd.Series(target_fv.values, index=target_fv.feature_names)
+
+    return target_features
+
+
 def get_custom_target_features(hsv_img, mask=None, show_plots=False):
     h, s, v = get_hsv(hsv_img, mask)
     color_features = get_custom_color_features(hsv_img, mask=mask, show_plots=show_plots)
