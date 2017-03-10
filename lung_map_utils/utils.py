@@ -689,3 +689,132 @@ def write_custom_sig_file(img_path, target_features, suffix=None):
             for feature, value in sorted(target_features.iteritems()):
                 line_str = '%f\t%s\n' % (value, feature)
                 f.write(line_str)
+
+
+def find_border_contours(contours, img_h, img_w):
+    """
+    Given a list of contours, splits them into 2 lists: the border contours and non-border contours
+
+    Args:
+        contours: list of contours to separate
+        img_h: original image height
+        img_w: original image width
+
+    Returns:
+        2 lists, the first being the border contours
+
+    Raises:
+        tbd
+    """
+
+    min_y = 0
+    min_x = 0
+
+    max_y = img_h - 1
+    max_x = img_w - 1
+
+    mins = {min_x, min_y}
+    maxs = {max_x, max_y}
+
+    border_contours = []
+    non_border_contours = []
+
+    for c in contours:
+        rect = cv2.boundingRect(c)
+
+        c_min_x = rect[0]
+        c_min_y = rect[1]
+        c_max_x = rect[0] + rect[2] - 1
+        c_max_y = rect[1] + rect[3] - 1
+
+        c_mins = {c_min_x, c_min_y}
+        c_maxs = {c_max_x, c_max_y}
+
+        if len(mins.intersection(c_mins)) > 0 or len(maxs.intersection(c_maxs)) > 0:
+            border_contours.append(c)
+        else:
+            non_border_contours.append(c)
+
+    return border_contours, non_border_contours
+
+
+def fill_border_contour(contour, img_shape):
+    mask = np.zeros(img_shape, dtype=np.uint8)
+
+    cv2.drawContours(mask, [contour], 0, 255, cv2.FILLED)
+
+    # Extract the perimeter pixels, leaving out the last pixel
+    # of each side as it is included in the next side (going clockwise).
+    # This makes all the side arrays the same length.
+    # We also flip the bottom and left side, as we want to "unwrap" the
+    # perimeter pixels in a clockwise fashion.
+    top = mask[0, :-1]
+    right = mask[:-1, -1]
+    bottom = np.flipud(mask[-1, 1:])
+    left = np.flipud(mask[1:, 0])
+
+    # combine the perimeter sides into one continuous array
+    perimeter_pixels = np.concatenate([top, right, bottom, left])
+
+    region_boundary_locs = np.where(perimeter_pixels == 255)[0]
+
+    # the perimeter here is not a geometric perimeter but the number of pixels around the image
+    img_h = img_shape[0]
+    img_w = img_shape[1]
+    perimeter = (img_h - 1) * 2 + (img_w - 1) * 2
+
+    # account for the wrap around from the last contour pixel to the end,
+    # i.e. back at the start at (0, 0)
+    wrap_distance = region_boundary_locs.max() - perimeter
+
+    # insert the wrap distance in front of the region boundary locations
+    region_boundary_locs = np.concatenate([[wrap_distance], region_boundary_locs])
+
+    # calculate the gap size between boundary pixel locations
+    gaps = np.diff(region_boundary_locs)
+
+    # add one to the results because of the diff offset
+    max_gap_idx = np.where(gaps == gaps.max())[0] + 1
+
+    # there should only be one, else we have a tie and should probably ignore that case
+    if max_gap_idx.size != 1:
+        return None
+
+    start_perim_loc_of_flood_entry = region_boundary_locs[max_gap_idx[0]]
+
+    # see if subsequent perimeter locations were also part of the contour,
+    # adding one to the last one we found
+    subsequent_region_border_locs = region_boundary_locs[
+        region_boundary_locs > start_perim_loc_of_flood_entry
+    ]
+
+    flood_fill_entry_point = start_perim_loc_of_flood_entry
+
+    for loc in subsequent_region_border_locs:
+        if loc == flood_fill_entry_point + 1:
+            flood_fill_entry_point = loc
+
+    # we should hit the first interior empty point of the contour by moving forward one pixel around the perimeter
+    flood_fill_entry_point += 1
+
+    # now to convert our perimeter location back to an image coordinate
+    if flood_fill_entry_point < img_w:
+        print 'top'
+        flood_fill_entry_coords = (flood_fill_entry_point, 0)
+    elif flood_fill_entry_point < img_w + img_h:
+        print 'right'
+        flood_fill_entry_coords = (img_w - 1, flood_fill_entry_point - img_w + 1)
+    elif flood_fill_entry_point < img_w * 2 + img_h:
+        print 'bottom'
+        flood_fill_entry_coords = (img_h + (2 * img_w) - 3 - flood_fill_entry_point, img_h - 1)
+    else:
+        print 'left'
+        flood_fill_entry_coords = (0, perimeter - flood_fill_entry_point)
+
+    flood_fill_mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+
+    print flood_fill_entry_point
+    print flood_fill_entry_coords
+    cv2.floodFill(mask, flood_fill_mask, tuple(flood_fill_entry_coords), 255)
+
+    return mask
