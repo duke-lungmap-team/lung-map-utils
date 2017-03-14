@@ -773,6 +773,10 @@ def fill_border_contour(contour, img_shape):
     # calculate the gap size between boundary pixel locations
     gaps = np.diff(region_boundary_locs)
 
+    # if there's only one gap, the contour is already filled
+    if not np.sum(gaps > 1) > 1:
+        return mask
+
     # add one to the results because of the diff offset
     max_gap_idx = np.where(gaps == gaps.max())[0] + 1
 
