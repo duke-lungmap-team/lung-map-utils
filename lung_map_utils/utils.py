@@ -316,6 +316,18 @@ def find_rect_union(rect_list):
     return min_x, min_y, max_x - min_x, max_y - min_y
 
 
+def find_contour_union(contour_list, img_shape):
+    union_mask = np.zeros(img_shape, dtype=np.uint8)
+
+    for c in contour_list:
+        c_mask = np.zeros(img_shape, dtype=np.uint8)
+        cv2.drawContours(c_mask, [c], 0, 255, cv2.FILLED)
+
+        union_mask = cv2.bitwise_or(union_mask, c_mask)
+
+    return union_mask
+
+
 def get_class_map(train_dir):
     class_paths = []
 
