@@ -511,9 +511,13 @@ def predict(input_dict):
     trained_model = input_dict['model']
     class_map = input_dict['class_map']
     custom = input_dict['custom']
+    contour_mask = input_dict['contour_mask']
+    hsv_img = input_dict['hsv_img']
 
-    if custom:
+    if custom and contour_mask is None:
         target_features = get_custom_target_features(region)
+    elif custom and contour_mask is not None:
+        target_features = get_custom_target_features(hsv_img, mask=contour_mask)
     else:
         # extract wnd-charm features from region
         target_features = get_target_features(region, rect_index)
