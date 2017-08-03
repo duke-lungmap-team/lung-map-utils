@@ -8,7 +8,7 @@ import os
 import re
 import pandas as pd
 import glob
-from sklearn.grid_search import GridSearchCV
+from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
 from sklearn.linear_model import RidgeClassifier
 from sklearn.pipeline import Pipeline
