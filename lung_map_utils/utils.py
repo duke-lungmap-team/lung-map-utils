@@ -14,7 +14,6 @@ from sklearn.linear_model import RidgeClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_selection import SelectFdr
-from wndcharm.FeatureVector import FeatureVector
 from scipy.spatial.distance import pdist
 import warnings
 
@@ -447,30 +446,6 @@ def build_trained_model(training_data, classifier='svc'):
     return pipe
 
 
-def get_target_features(region, rect_index):
-    tmp_tiff = 'rect_%d.tif' % rect_index
-
-    region.save(tmp_tiff)
-
-    target_fv = FeatureVector(name='FromTiff', long=True, color=True, source_filepath=tmp_tiff)
-    target_fv.GenerateFeatures(quiet=True, write_to_disk=False)
-
-    target_features = pd.Series(target_fv.values, index=target_fv.feature_names)
-
-    os.remove(tmp_tiff)
-
-    return target_features
-
-
-def get_target_features_from_tif(tif_file):
-    target_fv = FeatureVector(name='FromTiff', long=True, color=True, source_filepath=tif_file)
-    target_fv.GenerateFeatures(quiet=True, write_to_disk=False)
-
-    target_features = pd.Series(target_fv.values, index=target_fv.feature_names)
-
-    return target_features
-
-
 def get_custom_target_features(hsv_img, mask=None, show_plots=False):
     h, s, v = get_hsv(hsv_img, mask)
     color_features = get_custom_color_features(hsv_img, mask=mask, show_plots=show_plots)
@@ -494,8 +469,8 @@ def get_custom_target_features(hsv_img, mask=None, show_plots=False):
     feature_names.append('region_value_variance')
     values.append(np.var(v))
 
-    for color, features in color_features.iteritems():
-        for feature, value in sorted(features.iteritems()):
+    for color, features in color_features.items():
+        for feature, value in sorted(features.items()):
             feature_str = '%s (%s)' % (feature, color)
             feature_names.append(feature_str)
             values.append(value)
@@ -548,6 +523,13 @@ def predict(input_dict):
 
 
 def get_custom_color_features(hsv_img, mask=None, show_plots=False):
+    """
+    Takes an hsv image and returns a custom set of features useful for machine learning
+    :param hsv_img: np.array with color scheme hsv
+    :param mask: np.array list that contains the line segments of the thing being described
+    :param show_plots: boolean to show plots
+    :return: dictionary of features for machine learning
+    """
     c_prof = get_color_profile(hsv_img, mask)
 
     if mask is not None:
@@ -819,22 +801,22 @@ def fill_border_contour(contour, img_shape):
 
     # now to convert our perimeter location back to an image coordinate
     if flood_fill_entry_point < img_w:
-        print 'top'
+        print('top')
         flood_fill_entry_coords = (flood_fill_entry_point, 0)
     elif flood_fill_entry_point < img_w + img_h:
-        print 'right'
+        print('right')
         flood_fill_entry_coords = (img_w - 1, flood_fill_entry_point - img_w + 1)
     elif flood_fill_entry_point < img_w * 2 + img_h:
-        print 'bottom'
+        print('bottom')
         flood_fill_entry_coords = (img_h + (2 * img_w) - 3 - flood_fill_entry_point, img_h - 1)
     else:
-        print 'left'
+        print('left')
         flood_fill_entry_coords = (0, perimeter - flood_fill_entry_point)
 
     flood_fill_mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
 
-    print flood_fill_entry_point
-    print flood_fill_entry_coords
+    print(flood_fill_entry_point)
+    print(flood_fill_entry_coords)
     cv2.floodFill(mask, flood_fill_mask, tuple(flood_fill_entry_coords), 255)
 
     return mask
