@@ -8,17 +8,38 @@ import os
 import re
 import pandas as pd
 import glob
-from sklearn.grid_search import GridSearchCV
+# noinspection PyPackageRequirements
+from sklearn.model_selection import GridSearchCV
+# noinspection PyPackageRequirements
 from sklearn.svm import SVC
+# noinspection PyPackageRequirements
 from sklearn.linear_model import RidgeClassifier
+# noinspection PyPackageRequirements
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, RobustScaler
+# noinspection PyPackageRequirements
+from sklearn.preprocessing import StandardScaler
+# noinspection PyPackageRequirements
 from sklearn.feature_selection import SelectFdr
-from wndcharm.FeatureVector import FeatureVector
 from scipy.spatial.distance import pdist
 import warnings
 
 np.seterr(all='warn')
+
+alpha = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10]
+ridge_params = {'alpha': alpha}
+
+c_s = [0.01, 0.1, 1.0, 10.0, 100.0]
+gamma = [1e-4, 1e-3, 1e-2, 1e-1, 1, 10]
+svc_params = [{'kernel': ['rbf'], 'gamma': gamma, 'C': c_s},
+              {'kernel': ['linear'], 'C': c_s}]
+clf = GridSearchCV(SVC(probability=True), svc_params, cv=4)
+pipe = Pipeline([
+        ('scaler', StandardScaler()),
+        # ('scaler', RobustScaler()),
+        ('feature_selection', SelectFdr()),
+        # ('feature_selection', SelectKBest(k=400)),
+        ('classification', clf)
+    ])
 
 HSV_RANGES = {
     # red is a major color
@@ -100,6 +121,7 @@ def create_mask(hsv_img, colors):
 
     for color in colors:
         for color_range in HSV_RANGES[color]:
+            # noinspection PyUnresolvedReferences
             mask += cv2.inRange(
                 hsv_img,
                 color_range['lower'],
@@ -113,20 +135,25 @@ def fill_holes(mask):
     """
     Fills holes in a given binary mask.
     """
+    # noinspection PyUnresolvedReferences
     ret, thresh = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+    # noinspection PyUnresolvedReferences
     new_mask, contours, hierarchy = cv2.findContours(
         thresh,
         cv2.RETR_CCOMP,
         cv2.CHAIN_APPROX_SIMPLE
     )
     for cnt in contours:
+        # noinspection PyUnresolvedReferences
         cv2.drawContours(new_mask, [cnt], 0, 255, -1)
 
     return new_mask
 
 
 def filter_contours_by_size(mask, min_size=1024, max_size=None):
+    # noinspection PyUnresolvedReferences
     ret, thresh = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+    # noinspection PyUnresolvedReferences
     new_mask, contours, hierarchy = cv2.findContours(
         thresh,
         cv2.RETR_CCOMP,
@@ -140,6 +167,7 @@ def filter_contours_by_size(mask, min_size=1024, max_size=None):
     good_contours = []
 
     for c in contours:
+        # noinspection PyUnresolvedReferences
         rect = cv2.boundingRect(c)
         rect_area = rect[2] * rect[3]
 
@@ -267,6 +295,7 @@ def get_color_profile(hsv_img, mask=None):
 def plot_rectangles(hsv_img, fig_size=(16, 16), rectangles=None, lw=1, alt_rectangles=None, lw2=1):
     plt.figure(figsize=fig_size)
     ax = plt.gca()
+    # noinspection PyUnresolvedReferences
     plt.imshow(cv2.cvtColor(hsv_img, cv2.COLOR_HSV2RGB))
 
     if rectangles is not None:
@@ -321,8 +350,9 @@ def find_contour_union(contour_list, img_shape):
 
     for c in contour_list:
         c_mask = np.zeros(img_shape, dtype=np.uint8)
+        # noinspection PyUnresolvedReferences
         cv2.drawContours(c_mask, [c], 0, 255, cv2.FILLED)
-
+        # noinspection PyUnresolvedReferences
         union_mask = cv2.bitwise_or(union_mask, c_mask)
 
     return union_mask
@@ -447,30 +477,6 @@ def build_trained_model(training_data, classifier='svc'):
     return pipe
 
 
-def get_target_features(region, rect_index):
-    tmp_tiff = 'rect_%d.tif' % rect_index
-
-    region.save(tmp_tiff)
-
-    target_fv = FeatureVector(name='FromTiff', long=True, color=True, source_filepath=tmp_tiff)
-    target_fv.GenerateFeatures(quiet=True, write_to_disk=False)
-
-    target_features = pd.Series(target_fv.values, index=target_fv.feature_names)
-
-    os.remove(tmp_tiff)
-
-    return target_features
-
-
-def get_target_features_from_tif(tif_file):
-    target_fv = FeatureVector(name='FromTiff', long=True, color=True, source_filepath=tif_file)
-    target_fv.GenerateFeatures(quiet=True, write_to_disk=False)
-
-    target_features = pd.Series(target_fv.values, index=target_fv.feature_names)
-
-    return target_features
-
-
 def get_custom_target_features(hsv_img, mask=None, show_plots=False):
     h, s, v = get_hsv(hsv_img, mask)
     color_features = get_custom_color_features(hsv_img, mask=mask, show_plots=show_plots)
@@ -494,8 +500,8 @@ def get_custom_target_features(hsv_img, mask=None, show_plots=False):
     feature_names.append('region_value_variance')
     values.append(np.var(v))
 
-    for color, features in color_features.iteritems():
-        for feature, value in sorted(features.iteritems()):
+    for color, features in color_features.items():
+        for feature, value in sorted(features.items()):
             feature_str = '%s (%s)' % (feature, color)
             feature_names.append(feature_str)
             values.append(value)
@@ -505,49 +511,14 @@ def get_custom_target_features(hsv_img, mask=None, show_plots=False):
     return target_features.sort_index()
 
 
-def predict(input_dict):
-    rect_index = input_dict['rect_index']
-    region = input_dict['region']
-    trained_model = input_dict['model']
-    class_map = input_dict['class_map']
-    custom = input_dict['custom']
-    contour_mask = input_dict['contour_mask']
-    hsv_img = input_dict['hsv_img']
-
-    if custom and contour_mask is None:
-        target_features = get_custom_target_features(region)
-    elif custom and contour_mask is not None:
-        target_features = get_custom_target_features(hsv_img, mask=contour_mask)
-    else:
-        # extract wnd-charm features from region
-        target_features = get_target_features(region, rect_index)
-
-    # classify target features using training data
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-
-        target_prediction = trained_model.predict(target_features)
-
-        if class_map[target_prediction[0]] == 'background':
-            return rect_index, class_map[target_prediction[0]], None
-        try:
-            target_prob = trained_model.predict_proba(target_features)
-        except Exception:  # TODO: check which exception is raised
-            target_prob = None
-
-    if target_prob is not None:
-        probabilities = {}
-        for i, prob in enumerate(target_prob[0]):
-            probabilities[class_map[i + 1]] = prob
-
-        sorted_probabilities = sorted(probabilities.items(), key=operator.itemgetter(1), reverse=True)
-    else:
-        sorted_probabilities = None
-
-    return rect_index, class_map[target_prediction[0]], sorted_probabilities
-
-
 def get_custom_color_features(hsv_img, mask=None, show_plots=False):
+    """
+    Takes an hsv image and returns a custom set of features useful for machine learning
+    :param hsv_img: np.array with color scheme hsv
+    :param mask: np.array list that contains the line segments of the thing being described
+    :param show_plots: boolean to show plots
+    :return: dictionary of features for machine learning
+    """
     c_prof = get_color_profile(hsv_img, mask)
 
     if mask is not None:
@@ -562,20 +533,26 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
 
         # create color mask & apply it
         color_mask = create_mask(hsv_img, [color])
+        # noinspection PyUnresolvedReferences
         mask_img = cv2.bitwise_and(hsv_img, hsv_img, mask=color_mask)
 
         # apply user specified mask
         if mask is not None:
+            # noinspection PyUnresolvedReferences
             mask_img = cv2.bitwise_and(mask_img, mask_img, mask=mask)
+            # noinspection PyUnresolvedReferences
             color_mask = cv2.bitwise_and(color_mask, color_mask, mask=mask)
 
         if show_plots:
             fig, (ax1, ax2) = plt.subplots(1, 2)
             plt.title(color)
+            # noinspection PyUnresolvedReferences
             ax1.imshow(cv2.cvtColor(mask_img, cv2.COLOR_HSV2RGB))
+            # noinspection PyUnresolvedReferences
             ax2.imshow(cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB))
-
+        # noinspection PyUnresolvedReferences
         ret, thresh = cv2.threshold(color_mask, 1, 255, cv2.THRESH_BINARY)
+        # noinspection PyUnresolvedReferences
         new_mask, contours, hierarchy = cv2.findContours(
             thresh,
             cv2.RETR_EXTERNAL,
@@ -608,18 +585,19 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
         largest_contour = None
 
         for c in contours:
+            # noinspection PyUnresolvedReferences
             area = cv2.contourArea(c)
 
             if area <= 0.0:
                 continue
-
+            # noinspection PyUnresolvedReferences
             peri = cv2.arcLength(c, True)
 
             if area > largest_contour_area:
                 largest_contour_area = area
                 largest_contour_peri = peri
                 largest_contour = c
-
+            # noinspection PyUnresolvedReferences
             m = cv2.moments(c)
             centroid_x = m['m10'] / m['m00']
             centroid_y = m['m01'] / m['m00']
@@ -656,6 +634,7 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
 
         if largest_contour_area >= 0.02 * tot_px and largest_contour is not None:
             # get smallest bounding rectangle (rotated)
+            # noinspection PyUnresolvedReferences
             box = cv2.minAreaRect(largest_contour)
             cnt_w, cnt_h = box[1]
 
@@ -667,7 +646,9 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
             largest_contour_circularity = largest_contour_peri / np.sqrt(largest_contour_area)
 
             # calculate convexity as convex hull perimeter / contour perimeter
+            # noinspection PyUnresolvedReferences
             hull = cv2.convexHull(largest_contour)
+            # noinspection PyUnresolvedReferences
             largest_contour_convexity = cv2.arcLength(hull, True) / largest_contour_peri
 
         color_features[color] = {
@@ -736,6 +717,7 @@ def find_border_contours(contours, img_h, img_w):
     non_border_contours = []
 
     for c in contours:
+        # noinspection PyUnresolvedReferences
         rect = cv2.boundingRect(c)
 
         c_min_x = rect[0]
@@ -754,9 +736,39 @@ def find_border_contours(contours, img_h, img_w):
     return border_contours, non_border_contours
 
 
+def generate_custom_features(hsv_img_as_numpy, polygon_points, label):
+    """
+    Given an hsv image represented as a numpy arrary, polygon points which represent a
+    target entity, and a label, this function will return a set of important features about
+    the entity outlined in the polygons (plus some area blackened to generate a rectangle).
+    :param hsv_img_as_numpy: numpy.array
+    :param polygon_points: numpy.array
+    :param label: str: indicating what the thing is
+    :return: a dictionary containg features and a label key
+    """
+    # noinspection PyUnresolvedReferences
+    b_rect = cv2.boundingRect(polygon_points)
+    x1 = b_rect[0]
+    x2 = b_rect[0] + b_rect[2]
+    y1 = b_rect[1]
+    y2 = b_rect[1] + b_rect[3]
+    mask = np.zeros(hsv_img_as_numpy.shape[0:2], dtype=np.uint8)
+    # plt.imshow(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB))
+    # noinspection PyUnresolvedReferences
+    cv2.drawContours(mask, [polygon_points], 0, 255, cv2.FILLED)
+    # noinspection PyUnresolvedReferences
+    mask_img = cv2.bitwise_and(hsv_img_as_numpy, hsv_img_as_numpy, mask=mask)
+    # plt.imshow(cv2.cvtColor(mask_img, cv2.COLOR_HSV2RGB))
+    this_mask_img = mask_img[y1:y2, x1:x2]
+    # plt.imshow(cv2.cvtColor(this_mask_img, cv2.COLOR_HSV2RGB))
+    target_features = get_custom_target_features(this_mask_img)
+    results = target_features.to_dict()
+    results['label'] = label
+    return results
+
 def fill_border_contour(contour, img_shape):
     mask = np.zeros(img_shape, dtype=np.uint8)
-
+    # noinspection PyUnresolvedReferences
     cv2.drawContours(mask, [contour], 0, 255, cv2.FILLED)
 
     # Extract the perimeter pixels, leaving out the last pixel
@@ -819,22 +831,23 @@ def fill_border_contour(contour, img_shape):
 
     # now to convert our perimeter location back to an image coordinate
     if flood_fill_entry_point < img_w:
-        print 'top'
+        print('top')
         flood_fill_entry_coords = (flood_fill_entry_point, 0)
     elif flood_fill_entry_point < img_w + img_h:
-        print 'right'
+        print('right')
         flood_fill_entry_coords = (img_w - 1, flood_fill_entry_point - img_w + 1)
     elif flood_fill_entry_point < img_w * 2 + img_h:
-        print 'bottom'
+        print('bottom')
         flood_fill_entry_coords = (img_h + (2 * img_w) - 3 - flood_fill_entry_point, img_h - 1)
     else:
-        print 'left'
+        print('left')
         flood_fill_entry_coords = (0, perimeter - flood_fill_entry_point)
 
     flood_fill_mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
 
-    print flood_fill_entry_point
-    print flood_fill_entry_coords
+    print(flood_fill_entry_point)
+    print(flood_fill_entry_coords)
+    # noinspection PyUnresolvedReferences
     cv2.floodFill(mask, flood_fill_mask, tuple(flood_fill_entry_coords), 255)
 
     return mask
