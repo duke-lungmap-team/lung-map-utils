@@ -8,16 +8,38 @@ import os
 import re
 import pandas as pd
 import glob
+# noinspection PyPackageRequirements
 from sklearn.model_selection import GridSearchCV
+# noinspection PyPackageRequirements
 from sklearn.svm import SVC
+# noinspection PyPackageRequirements
 from sklearn.linear_model import RidgeClassifier
+# noinspection PyPackageRequirements
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, RobustScaler
+# noinspection PyPackageRequirements
+from sklearn.preprocessing import StandardScaler
+# noinspection PyPackageRequirements
 from sklearn.feature_selection import SelectFdr
 from scipy.spatial.distance import pdist
 import warnings
 
 np.seterr(all='warn')
+
+alpha = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10]
+ridge_params = {'alpha': alpha}
+
+c_s = [0.01, 0.1, 1.0, 10.0, 100.0]
+gamma = [1e-4, 1e-3, 1e-2, 1e-1, 1, 10]
+svc_params = [{'kernel': ['rbf'], 'gamma': gamma, 'C': c_s},
+              {'kernel': ['linear'], 'C': c_s}]
+clf = GridSearchCV(SVC(probability=True), svc_params, cv=4)
+pipe = Pipeline([
+        ('scaler', StandardScaler()),
+        # ('scaler', RobustScaler()),
+        ('feature_selection', SelectFdr()),
+        # ('feature_selection', SelectKBest(k=400)),
+        ('classification', clf)
+    ])
 
 HSV_RANGES = {
     # red is a major color
@@ -99,6 +121,7 @@ def create_mask(hsv_img, colors):
 
     for color in colors:
         for color_range in HSV_RANGES[color]:
+            # noinspection PyUnresolvedReferences
             mask += cv2.inRange(
                 hsv_img,
                 color_range['lower'],
@@ -112,20 +135,25 @@ def fill_holes(mask):
     """
     Fills holes in a given binary mask.
     """
+    # noinspection PyUnresolvedReferences
     ret, thresh = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+    # noinspection PyUnresolvedReferences
     new_mask, contours, hierarchy = cv2.findContours(
         thresh,
         cv2.RETR_CCOMP,
         cv2.CHAIN_APPROX_SIMPLE
     )
     for cnt in contours:
+        # noinspection PyUnresolvedReferences
         cv2.drawContours(new_mask, [cnt], 0, 255, -1)
 
     return new_mask
 
 
 def filter_contours_by_size(mask, min_size=1024, max_size=None):
+    # noinspection PyUnresolvedReferences
     ret, thresh = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+    # noinspection PyUnresolvedReferences
     new_mask, contours, hierarchy = cv2.findContours(
         thresh,
         cv2.RETR_CCOMP,
@@ -139,6 +167,7 @@ def filter_contours_by_size(mask, min_size=1024, max_size=None):
     good_contours = []
 
     for c in contours:
+        # noinspection PyUnresolvedReferences
         rect = cv2.boundingRect(c)
         rect_area = rect[2] * rect[3]
 
@@ -266,6 +295,7 @@ def get_color_profile(hsv_img, mask=None):
 def plot_rectangles(hsv_img, fig_size=(16, 16), rectangles=None, lw=1, alt_rectangles=None, lw2=1):
     plt.figure(figsize=fig_size)
     ax = plt.gca()
+    # noinspection PyUnresolvedReferences
     plt.imshow(cv2.cvtColor(hsv_img, cv2.COLOR_HSV2RGB))
 
     if rectangles is not None:
@@ -320,8 +350,9 @@ def find_contour_union(contour_list, img_shape):
 
     for c in contour_list:
         c_mask = np.zeros(img_shape, dtype=np.uint8)
+        # noinspection PyUnresolvedReferences
         cv2.drawContours(c_mask, [c], 0, 255, cv2.FILLED)
-
+        # noinspection PyUnresolvedReferences
         union_mask = cv2.bitwise_or(union_mask, c_mask)
 
     return union_mask
@@ -502,20 +533,26 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
 
         # create color mask & apply it
         color_mask = create_mask(hsv_img, [color])
+        # noinspection PyUnresolvedReferences
         mask_img = cv2.bitwise_and(hsv_img, hsv_img, mask=color_mask)
 
         # apply user specified mask
         if mask is not None:
+            # noinspection PyUnresolvedReferences
             mask_img = cv2.bitwise_and(mask_img, mask_img, mask=mask)
+            # noinspection PyUnresolvedReferences
             color_mask = cv2.bitwise_and(color_mask, color_mask, mask=mask)
 
         if show_plots:
             fig, (ax1, ax2) = plt.subplots(1, 2)
             plt.title(color)
+            # noinspection PyUnresolvedReferences
             ax1.imshow(cv2.cvtColor(mask_img, cv2.COLOR_HSV2RGB))
+            # noinspection PyUnresolvedReferences
             ax2.imshow(cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB))
-
+        # noinspection PyUnresolvedReferences
         ret, thresh = cv2.threshold(color_mask, 1, 255, cv2.THRESH_BINARY)
+        # noinspection PyUnresolvedReferences
         new_mask, contours, hierarchy = cv2.findContours(
             thresh,
             cv2.RETR_EXTERNAL,
@@ -548,18 +585,19 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
         largest_contour = None
 
         for c in contours:
+            # noinspection PyUnresolvedReferences
             area = cv2.contourArea(c)
 
             if area <= 0.0:
                 continue
-
+            # noinspection PyUnresolvedReferences
             peri = cv2.arcLength(c, True)
 
             if area > largest_contour_area:
                 largest_contour_area = area
                 largest_contour_peri = peri
                 largest_contour = c
-
+            # noinspection PyUnresolvedReferences
             m = cv2.moments(c)
             centroid_x = m['m10'] / m['m00']
             centroid_y = m['m01'] / m['m00']
@@ -596,6 +634,7 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
 
         if largest_contour_area >= 0.02 * tot_px and largest_contour is not None:
             # get smallest bounding rectangle (rotated)
+            # noinspection PyUnresolvedReferences
             box = cv2.minAreaRect(largest_contour)
             cnt_w, cnt_h = box[1]
 
@@ -607,7 +646,9 @@ def get_custom_color_features(hsv_img, mask=None, show_plots=False):
             largest_contour_circularity = largest_contour_peri / np.sqrt(largest_contour_area)
 
             # calculate convexity as convex hull perimeter / contour perimeter
+            # noinspection PyUnresolvedReferences
             hull = cv2.convexHull(largest_contour)
+            # noinspection PyUnresolvedReferences
             largest_contour_convexity = cv2.arcLength(hull, True) / largest_contour_peri
 
         color_features[color] = {
@@ -676,6 +717,7 @@ def find_border_contours(contours, img_h, img_w):
     non_border_contours = []
 
     for c in contours:
+        # noinspection PyUnresolvedReferences
         rect = cv2.boundingRect(c)
 
         c_min_x = rect[0]
@@ -694,9 +736,39 @@ def find_border_contours(contours, img_h, img_w):
     return border_contours, non_border_contours
 
 
+def generate_custom_features(hsv_img_as_numpy, polygon_points, label):
+    """
+    Given an hsv image represented as a numpy arrary, polygon points which represent a
+    target entity, and a label, this function will return a set of important features about
+    the entity outlined in the polygons (plus some area blackened to generate a rectangle).
+    :param hsv_img_as_numpy: numpy.array
+    :param polygon_points: numpy.array
+    :param label: str: indicating what the thing is
+    :return: a dictionary containg features and a label key
+    """
+    # noinspection PyUnresolvedReferences
+    b_rect = cv2.boundingRect(polygon_points)
+    x1 = b_rect[0]
+    x2 = b_rect[0] + b_rect[2]
+    y1 = b_rect[1]
+    y2 = b_rect[1] + b_rect[3]
+    mask = np.zeros(hsv_img_as_numpy.shape[0:2], dtype=np.uint8)
+    # plt.imshow(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB))
+    # noinspection PyUnresolvedReferences
+    cv2.drawContours(mask, [polygon_points], 0, 255, cv2.FILLED)
+    # noinspection PyUnresolvedReferences
+    mask_img = cv2.bitwise_and(hsv_img_as_numpy, hsv_img_as_numpy, mask=mask)
+    # plt.imshow(cv2.cvtColor(mask_img, cv2.COLOR_HSV2RGB))
+    this_mask_img = mask_img[y1:y2, x1:x2]
+    # plt.imshow(cv2.cvtColor(this_mask_img, cv2.COLOR_HSV2RGB))
+    target_features = get_custom_target_features(this_mask_img)
+    results = target_features.to_dict()
+    results['label'] = label
+    return results
+
 def fill_border_contour(contour, img_shape):
     mask = np.zeros(img_shape, dtype=np.uint8)
-
+    # noinspection PyUnresolvedReferences
     cv2.drawContours(mask, [contour], 0, 255, cv2.FILLED)
 
     # Extract the perimeter pixels, leaving out the last pixel
@@ -775,6 +847,7 @@ def fill_border_contour(contour, img_shape):
 
     print(flood_fill_entry_point)
     print(flood_fill_entry_coords)
+    # noinspection PyUnresolvedReferences
     cv2.floodFill(mask, flood_fill_mask, tuple(flood_fill_entry_coords), 255)
 
     return mask
