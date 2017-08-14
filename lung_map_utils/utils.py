@@ -736,7 +736,7 @@ def find_border_contours(contours, img_h, img_w):
     return border_contours, non_border_contours
 
 
-def generate_custom_features(hsv_img_as_numpy, polygon_points, label):
+def generate_custom_features(hsv_img_as_numpy, polygon_points, label=None):
     """
     Given an hsv image represented as a numpy arrary, polygon points which represent a
     target entity, and a label, this function will return a set of important features about
