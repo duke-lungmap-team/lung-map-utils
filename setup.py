@@ -10,7 +10,7 @@ setup(
     description='A machine learning pipeline used to predict anatomy from Lungmap images.',
     install_requires=[
         'numpy (==1.13)',
-        'opencv_python (==3.2.0)',
+        'opencv-python (==3.2.0.7)',
         'scipy (==0.19.1)',
         'pandas (==0.19.2)',
         'scikit_learn (==0.18.2)'
