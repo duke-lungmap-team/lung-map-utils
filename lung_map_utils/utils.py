@@ -23,6 +23,14 @@ pipeline = Pipeline([
     ]
 )
 
+pipe_without_gridsearch = Pipeline([
+        ('scaler', StandardScaler()),
+        # ('scaler', RobustScaler()),
+        ('feature_selection', SelectFdr()),
+        # ('feature_selection', SelectKBest(k=400)),
+        ('classification', SVC(probability=True))
+    ])
+
 HSV_RANGES = {
     # red is a major color
     'red': [
