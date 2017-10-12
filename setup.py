@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup
 
 setup(
     name='LungMapUtils',
@@ -8,7 +8,7 @@ setup(
     long_description=open('README.md').read(),
     author='Duke Lungmap Team',
     description='A machine learning pipeline used to predict anatomy from Lungmap images.',
-    requires=[
+    install_requires=[
         'numpy (==1.13)',
         'opencv_python (==3.2.0)',
         'scipy (==0.19.1)',
