@@ -91,6 +91,18 @@ HSV_RANGES = {
             'lower': np.array([0, 0, 229]),
             'upper': np.array([180, 38, 255])
         }
+    ],
+    'white_blue': [
+        {
+            'lower': np.array([101, 0, 160]),
+            'upper': np.array([140, 76, 255])
+        }
+    ],
+    'dark_blue': [
+        {
+            'lower': np.array([101, 77, 0]),
+            'upper': np.array([140, 255, 159])
+        }
     ]
 }
 
