@@ -381,8 +381,9 @@ def generate_features(hsv_img_as_numpy, polygon_points, label=None):
     :param hsv_img_as_numpy: numpy.array
     :param polygon_points: numpy.array
     :param label: str: indicating what the thing is
-    :return: a dictionary containg features and a label key
+    :return: a dictionary containing features and a label key
     """
+    polygon_points = polygon_points.copy()
     # noinspection PyUnresolvedReferences
     b_rect = cv2.boundingRect(polygon_points)
     x1 = b_rect[0]
@@ -399,9 +400,24 @@ def generate_features(hsv_img_as_numpy, polygon_points, label=None):
     # noinspection PyUnresolvedReferences
     mask_img = cv2.bitwise_and(hsv_img_as_numpy, hsv_img_as_numpy, mask=mask)
 
+    # crop region and poly points for efficiency
     this_mask_img = mask_img[y1:y2, x1:x2]
+    if len(polygon_points.shape) == 3:
+        # dealing with OpenCV type contour
+        polygon_points[:, :, 0] = polygon_points[:, :, 0] - x1
+        polygon_points[:, :, 1] = polygon_points[:, :, 1] - y1
+    else:
+        # assume a simple array of x, y coordinates
+        polygon_points[:, 0] = polygon_points[:, 0] - x1
+        polygon_points[:, 1] = polygon_points[:, 1] - y1
 
-    target_features = get_target_features(this_mask_img)
+    # noinspection PyUnresolvedReferences
+    crop_mask = np.zeros(this_mask_img.shape[0:2], dtype=np.uint8)
+
+    # noinspection PyUnresolvedReferences
+    cv2.drawContours(crop_mask, [polygon_points], 0, 255, cv2.FILLED)
+
+    target_features = get_target_features(this_mask_img, mask=crop_mask)
 
     results = target_features.to_dict()
     results['label'] = label
