@@ -8,7 +8,7 @@ from sklearn.svm import SVC
 # noinspection PyPackageRequirements
 from sklearn.pipeline import Pipeline
 # noinspection PyPackageRequirements
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 # noinspection PyPackageRequirements
 from sklearn.feature_selection import SelectFdr
 import warnings
@@ -17,8 +17,8 @@ np.seterr(all='warn')
 
 classifier = SVC(probability=True)
 pipeline = Pipeline([
-        ('scaler', StandardScaler()),
-        ('feature_selection', SelectFdr()),
+        ('scaler', MinMaxScaler()),
+#        ('feature_selection', SelectFdr()),
         ('classification', classifier)
     ]
 )
@@ -107,6 +107,11 @@ HSV_RANGES = {
 }
 
 
+def calc_distance(x1, y1, x2, y2):
+    dist = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    return dist
+
+
 def create_mask(hsv_img, colors):
     """
     Creates a binary mask from HSV image using given colors.
@@ -188,11 +193,7 @@ def get_color_profile(hsv_img, mask=None):
 
 
 def build_trained_model(training_data):
-    pipe = Pipeline([
-        ('scaler', StandardScaler()),
-        ('feature_selection', SelectFdr()),
-        ('classification', SVC(probability=True))
-    ])
+    pipe = pipeline
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
@@ -207,6 +208,8 @@ def build_trained_model(training_data):
 
 def get_target_features(hsv_img, mask=None):
     h, s, v = get_hsv(hsv_img, mask)
+    s = s / 255.0
+    v = v / 255.0
     color_features = get_color_features(hsv_img, mask=mask)
 
     feature_names = []
@@ -253,6 +256,9 @@ def get_color_features(hsv_img, mask=None):
     else:
         tot_px = hsv_img.shape[0] * hsv_img.shape[1]
 
+    # corner to corner distance used to normalize sub-contour distance metrics
+    diag_distance = calc_distance(0, 0, hsv_img.shape[0], hsv_img.shape[1])
+
     color_features = {}
 
     for color in HSV_RANGES.keys():
@@ -297,12 +303,14 @@ def get_color_features(hsv_img, mask=None):
             continue
 
         largest_contour_area = 0.0
+        largest_contour_true_area = 0.0
         largest_contour_peri = 0.0
         largest_contour = None
 
         for c in contours:
             # noinspection PyUnresolvedReferences
-            area = cv2.contourArea(c)
+            true_area = cv2.contourArea(c)
+            area = true_area / float(tot_px)
 
             if area <= 0.0:
                 continue
@@ -311,6 +319,7 @@ def get_color_features(hsv_img, mask=None):
 
             if area > largest_contour_area:
                 largest_contour_area = area
+                largest_contour_true_area = true_area
                 largest_contour_peri = peri
                 largest_contour = c
             # noinspection PyUnresolvedReferences
@@ -325,7 +334,7 @@ def get_color_features(hsv_img, mask=None):
         if len(cent_list) <= 1:
             pair_dist = [0.0]
         else:
-            pair_dist = pdist(cent_list)
+            pair_dist = pdist(cent_list) / diag_distance
 
         dist_mean = np.mean(pair_dist)
         dist_var = np.var(pair_dist)
@@ -348,18 +357,18 @@ def get_color_features(hsv_img, mask=None):
         largest_contour_circularity = 0.0
         largest_contour_convexity = 0.0
 
-        if largest_contour_area >= 0.02 * tot_px and largest_contour is not None:
+        if largest_contour_true_area >= 0.0 and largest_contour is not None:
             # get smallest bounding rectangle (rotated)
             # noinspection PyUnresolvedReferences
             box = cv2.minAreaRect(largest_contour)
             cnt_w, cnt_h = box[1]
 
             largest_contour_eccentricity = cnt_w / cnt_h
-            if largest_contour_eccentricity < 1:
+            if largest_contour_eccentricity > 1:
                 largest_contour_eccentricity = 1.0 / largest_contour_eccentricity
 
-            # calculate inverse circularity as 1 / (area / perimeter ^ 2)
-            largest_contour_circularity = largest_contour_peri / np.sqrt(largest_contour_area)
+            # calculate circularity as (4 * pi * area) / perimeter ^ 2
+            largest_contour_circularity = (4 * np.pi * largest_contour_true_area) / float(largest_contour_peri)**2
 
             # calculate convexity as convex hull perimeter / contour perimeter
             # noinspection PyUnresolvedReferences
@@ -385,7 +394,7 @@ def get_color_features(hsv_img, mask=None):
     return color_features
 
 
-def generate_features(hsv_img_as_numpy, polygon_points, label=None):
+def generate_features(hsv_img_as_numpy, polygon_points, label=None, region_file_path=None):
     """
     Given an hsv image represented as a numpy array, polygon points which represent a
     target entity, and a label, this function will return a set of important features about
@@ -393,6 +402,7 @@ def generate_features(hsv_img_as_numpy, polygon_points, label=None):
     :param hsv_img_as_numpy: numpy.array
     :param polygon_points: numpy.array
     :param label: str: indicating what the thing is
+    :param region_file_path: str: optional file path to save the cropped sub-region as PNG
     :return: a dictionary containing features and a label key
     """
     polygon_points = polygon_points.copy()
@@ -430,6 +440,9 @@ def generate_features(hsv_img_as_numpy, polygon_points, label=None):
     cv2.drawContours(crop_mask, [polygon_points], 0, 255, cv2.FILLED)
 
     target_features = get_target_features(this_mask_img, mask=crop_mask)
+
+    if region_file_path is not None:
+        cv2.imwrite(region_file_path, cv2.cvtColor(this_mask_img, cv2.COLOR_HSV2BGR))
 
     results = target_features.to_dict()
     results['label'] = label

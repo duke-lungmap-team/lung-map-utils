@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='LungMapUtils',
-    version='1.0',
+    version='1.1',
     packages=['lung_map_utils'],
     license='BSD 2-Clause License',
     long_description=open('README.md').read(),
