@@ -241,6 +241,46 @@ def get_color_features(hsv_img, mask=None):
             color_mask = cv2.bitwise_and(color_mask, color_mask, mask=mask)
 
         ret, thresh = cv2.threshold(color_mask, 1, 255, cv2.THRESH_BINARY)
+
+        # To properly calculate the metrics, any "complex" contours with
+        # holes (i.e., those with a contour hierarchy) need to be reconstructed
+        # with their hierarchy. The OpenCV hierarchy scheme is a 4 column
+        # NumPy array with the following convention:
+        #
+        #   [Next, Previous, First_Child, Parent]
+        #
+        #   Next: Index of next contour at the same hierarchical level
+        #   Previous: Index of previous contour at the same hierarchical level
+        #   First_Child: Index of the parent's first child contour
+        #   Parent: Index of the parent contour
+        #
+        # If any of these cases do not apply then the value -1 is used. The
+        # following pseudo-code covers the different cases:
+        #
+        #   If 'Parent' == -1:
+        #     the index is a root parent contour
+        #
+        #     If 'First_Child' == -1:
+        #       the index has no children
+        #     If 'Next' == -1:
+        #       there are no more root-level parent contours left
+        #
+        #   Else If 'Parent' > -1:
+        #     the index is a child contour w/ 'Parent' value as it's parent
+        #
+        #     If 'Next' & 'First_Child' == -1:
+        #       the child has no further siblings or children, it's a "leaf"
+        #
+        # This can all get quite complex, with grand-children, and further
+        # nesting. Any root parent is an external contour, 1st level children
+        # are then the boundary of inner holes, the root parent's grandchildren
+        # would be the outer boundary of a nested contour, etc.
+        #
+        # However, we only want to consider connected contours, meaning those
+        # external boundaries and their direct boundaries for any holes. Any
+        # grandchildren we want to consider as being at the root level. For
+        # this, OpenCV has a retrieval method 'RETR_CCOMP', where only these
+        # 2 levels are used
         new_mask, contours, hierarchy = cv2.findContours(
             thresh,
             cv2.RETR_CCOMP,
@@ -250,6 +290,7 @@ def get_color_features(hsv_img, mask=None):
         cent_list = []
         area_list = []
         peri_list = []
+        har_list = []
 
         if len(contours) == 0:
             color_features[color] = {
@@ -261,42 +302,65 @@ def get_color_features(hsv_img, mask=None):
                 'area_variance': 0.0,
                 'perimeter_mean': 0.0,
                 'perimeter_variance': 0.0,
+                'har_mean': 0.0,
+                'har_variance': 0.0,
                 'largest_contour_area': 0.0,
                 'largest_contour_eccentricity': 0.0,
                 'largest_contour_circularity': 0.0,
-                'largest_contour_convexity': 0.0
+                'largest_contour_convexity': 0.0,
+                'largest_contour_har': 0.0
             }
             continue
+
+        # If contour count is > 0, then we have hierarchies,
+        # get all the parent contour indices
+        parent_contour_indices = np.where(hierarchy[:, :, 3] == -1)[1]
 
         largest_contour_area = 0.0
         largest_contour_true_area = 0.0
         largest_contour_peri = 0.0
+        largest_contour_har = 0.0
         largest_contour = None
 
-        for c in contours:
-            true_area = cv2.contourArea(c)
-            area = true_area / float(tot_px)
+        for c_idx in parent_contour_indices:
+            c_mask = np.zeros(hsv_img.shape[0:2], dtype=np.uint8)
+            cv2.drawContours(c_mask, contours, c_idx, 255, -1, hierarchy=hierarchy)
+
+            true_area = np.sum(c_mask > 0)
 
             # contour may be a single point or a line, which has no area
             # we'll also ignore "noise" of anything 4 pixels or less
-            if true_area <= 4.0:
+            # also if the contour is only a point or line, it has no area
+            # ignore 'noise' of any sub-contours that are <0.1% of total area
+            if true_area <= 8 or len(contours[c_idx]) <= 3:
                 continue
 
-            peri = cv2.arcLength(c, True)
+            area = true_area / float(tot_px)
+            peri = cv2.arcLength(contours[c_idx], True)
+            try:
+                m = cv2.moments(contours[c_idx])
+                centroid_x = m['m10'] / m['m00']
+                centroid_y = m['m01'] / m['m00']
+            except ZeroDivisionError:
+                centroid_x = contours[c_idx][:, :, 0].mean()
+                centroid_y = contours[c_idx][:, :, 1].mean()
+
+            # re-draw contour without holes
+            cv2.drawContours(c_mask, contours, c_idx, 255, -1)
+            filled_area = np.sum(c_mask > 0)
+            hole_area_ratio = (filled_area - true_area) / float(filled_area)
 
             if area > largest_contour_area:
                 largest_contour_area = area
                 largest_contour_true_area = true_area
                 largest_contour_peri = peri
-                largest_contour = c
-
-            m = cv2.moments(c)
-            centroid_x = m['m10'] / m['m00']
-            centroid_y = m['m01'] / m['m00']
+                largest_contour_har = hole_area_ratio
+                largest_contour = contours[c_idx]
 
             cent_list.append((centroid_x, centroid_y))
             area_list.append(area)
             peri_list.append(peri)
+            har_list.append(hole_area_ratio)
 
         if len(cent_list) <= 1:
             pair_dist = [0.0]
@@ -319,6 +383,13 @@ def get_color_features(hsv_img, mask=None):
         else:
             peri_mean = np.mean(peri_list)
             peri_var = np.var(peri_list)
+
+        if len(har_list) == 0:
+            har_mean = 0.0
+            har_var = 0.0
+        else:
+            har_mean = np.mean(har_list)
+            har_var = np.var(har_list)
 
         largest_contour_eccentricity = 0.0
         largest_contour_circularity = 0.0
@@ -349,10 +420,13 @@ def get_color_features(hsv_img, mask=None):
             'area_variance': area_var,
             'perimeter_mean': peri_mean,
             'perimeter_variance': peri_var,
+            'har_mean': har_mean,
+            'har_variance': har_var,
             'largest_contour_area': largest_contour_area,
             'largest_contour_eccentricity': largest_contour_eccentricity,
             'largest_contour_circularity': largest_contour_circularity,
-            'largest_contour_convexity': largest_contour_convexity
+            'largest_contour_convexity': largest_contour_convexity,
+            'largest_contour_har': largest_contour_har
         }
 
     return color_features
