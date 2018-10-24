@@ -6,20 +6,8 @@ except ImportError:
     import cv2
 import pandas as pd
 from scipy.spatial.distance import pdist
-from sklearn.svm import SVC
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MinMaxScaler
-
-import warnings
 
 np.seterr(all='warn')
-
-classifier = SVC(probability=True)
-pipeline = Pipeline([
-        ('scaler', MinMaxScaler()),
-        ('classification', classifier)
-    ]
-)
 
 HSV_RANGES = {
     # red is a major color
@@ -187,20 +175,6 @@ def get_color_profile(hsv_img, mask=None):
     return color_profile
 
 
-def build_trained_model(training_data):
-    pipe = pipeline
-
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-
-        pipe.fit(
-            training_data.ix[:, :-3],
-            training_data.ix[:, -3].astype('int')
-        )
-
-    return pipe
-
-
 def get_target_features(hsv_img, mask=None):
     h, s, v = get_hsv(hsv_img, mask)
     s = s / 255.0
@@ -327,7 +301,7 @@ def get_color_features(hsv_img, mask=None):
         if len(cent_list) <= 1:
             pair_dist = [0.0]
         else:
-            pair_dist = pdist(cent_list) / diag_distance
+            pair_dist = pdist(np.array(cent_list)) / diag_distance
 
         dist_mean = np.mean(pair_dist)
         dist_var = np.var(pair_dist)
