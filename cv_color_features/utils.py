@@ -200,6 +200,39 @@ def get_target_features(hsv_img, mask=None):
     feature_names.append('region_value_variance')
     values.append(np.var(v))
 
+    if mask is not None:
+        _, contours, _ = cv2.findContours(
+            mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        # get smallest bounding rectangle (rotated)
+        box = cv2.minAreaRect(contours[0])
+        cnt_w, cnt_h = box[1]
+
+        region_eccentricity = cnt_w / cnt_h
+        if region_eccentricity > 1:
+            region_eccentricity = 1.0 / region_eccentricity
+
+        peri = cv2.arcLength(contours[0], True)
+
+        # calculate circularity as (4 * pi * area) / perimeter ^ 2
+        region_circularity = (4 * np.pi * len(h)) / float(peri) ** 2
+
+        # calculate convexity as convex hull perimeter / contour perimeter
+        hull = cv2.convexHull(contours[0])
+        region_convexity = cv2.arcLength(hull, True) / peri
+
+        feature_names.append('region_eccentricity')
+        values.append(region_eccentricity)
+
+        feature_names.append('region_circularity')
+        values.append(region_circularity)
+
+        feature_names.append('region_convexity')
+        values.append(region_convexity)
+
     for color, features in color_features.items():
         for feature, value in sorted(features.items()):
             feature_str = '%s (%s)' % (feature, color)
