@@ -305,6 +305,10 @@ def get_color_features(hsv_img, mask=None):
                 'har_mean': 0.0,
                 'har_variance': 0.0,
                 'largest_contour_area': 0.0,
+                'largest_contour_saturation_mean': 0.0,
+                'largest_contour_saturation_variance': 0.0,
+                'largest_contour_value_mean': 0.0,
+                'largest_contour_value_variance': 0.0,
                 'largest_contour_eccentricity': 0.0,
                 'largest_contour_circularity': 0.0,
                 'largest_contour_convexity': 0.0,
@@ -321,6 +325,7 @@ def get_color_features(hsv_img, mask=None):
         largest_contour_peri = 0.0
         largest_contour_har = 0.0
         largest_contour = None
+        largest_contour_idx = None
 
         for c_idx in parent_contour_indices:
             c_mask = np.zeros(hsv_img.shape[0:2], dtype=np.uint8)
@@ -356,6 +361,7 @@ def get_color_features(hsv_img, mask=None):
                 largest_contour_peri = peri
                 largest_contour_har = hole_area_ratio
                 largest_contour = contours[c_idx]
+                largest_contour_idx = c_idx
 
             cent_list.append((centroid_x, centroid_y))
             area_list.append(area)
@@ -394,8 +400,30 @@ def get_color_features(hsv_img, mask=None):
         largest_contour_eccentricity = 0.0
         largest_contour_circularity = 0.0
         largest_contour_convexity = 0.0
+        largest_contour_sat_mean = 0.0
+        largest_contour_sat_var = 0.0
+        largest_contour_val_mean = 0.0
+        largest_contour_val_var = 0.0
 
         if largest_contour_true_area >= 0.0 and largest_contour is not None:
+            lc_mask = np.zeros(hsv_img.shape[0:2], dtype=np.uint8)
+            cv2.drawContours(
+                lc_mask,
+                contours,
+                largest_contour_idx,
+                255,
+                cv2.FILLED,
+                hierarchy=hierarchy
+            )
+            lc_h, lc_s, lc_v = get_hsv(hsv_img, mask)
+            lc_s = lc_s / 255.0
+            lc_v = lc_v / 255.0
+
+            largest_contour_sat_mean = np.mean(lc_s)
+            largest_contour_sat_var = np.var(lc_s)
+            largest_contour_val_mean = np.mean(lc_v)
+            largest_contour_val_var = np.mean(lc_v)
+
             # get smallest bounding rectangle (rotated)
             box = cv2.minAreaRect(largest_contour)
             cnt_w, cnt_h = box[1]
@@ -423,6 +451,10 @@ def get_color_features(hsv_img, mask=None):
             'har_mean': har_mean,
             'har_variance': har_var,
             'largest_contour_area': largest_contour_area,
+            'largest_contour_saturation_mean': largest_contour_sat_mean,
+            'largest_contour_saturation_variance': largest_contour_sat_var,
+            'largest_contour_value_mean': largest_contour_val_mean,
+            'largest_contour_value_variance': largest_contour_val_var,
             'largest_contour_eccentricity': largest_contour_eccentricity,
             'largest_contour_circularity': largest_contour_circularity,
             'largest_contour_convexity': largest_contour_convexity,
