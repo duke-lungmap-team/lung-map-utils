@@ -1,2 +1,2 @@
-# lung_map_utils
-Utility library of functions for the segmentation of color images
+# Computer Vision Color Features
+Utility library to generate feature metrics from regions in color images.
