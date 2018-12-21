@@ -9,6 +9,8 @@ from scipy.spatial.distance import pdist
 
 np.seterr(all='warn')
 
+cross_strel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+
 HSV_RANGES = {
     # red is a major color
     'red': [
@@ -56,6 +58,29 @@ HSV_RANGES = {
             'upper': np.array([160, 255, 255])
         }
     ],
+    # next are the simple versions of RGB, with no intermediate colors
+    'redish': [
+        {
+            'lower': np.array([0, 39, 64]),
+            'upper': np.array([30, 255, 255])
+        },
+        {
+            'lower': np.array([151, 39, 64]),
+            'upper': np.array([180, 255, 255])
+        }
+    ],
+    'greenish': [
+        {
+            'lower': np.array([31, 39, 64]),
+            'upper': np.array([90, 255, 255])
+        }
+    ],
+    'bluish': [
+        {
+            'lower': np.array([91, 39, 64]),
+            'upper': np.array([150, 255, 255])
+        }
+    ],
     # next are the monochrome ranges
     # black is all H & S values, but only the lower 10% of V
     'black': [
@@ -78,20 +103,19 @@ HSV_RANGES = {
             'upper': np.array([180, 38, 255])
         }
     ],
-    'white_blue': [
+    'light': [
         {
-            'lower': np.array([101, 0, 160]),
-            'upper': np.array([140, 76, 255])
+            'lower': np.array([0, 0, 128]),
+            'upper': np.array([180, 255, 255])
         }
     ],
-    'dark_blue': [
+    'dark': [
         {
-            'lower': np.array([101, 77, 0]),
-            'upper': np.array([140, 255, 159])
+            'lower': np.array([0, 0, 0]),
+            'upper': np.array([180, 255, 127])
         }
     ]
 }
-
 
 def calc_distance(x1, y1, x2, y2):
     dist = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
@@ -497,7 +521,45 @@ def get_color_features(hsv_img, mask=None):
     return color_features
 
 
-def generate_features(hsv_img_as_numpy, polygon_points, label=None, region_file_path=None):
+def get_bounding_rect(contour):
+    b_rect = cv2.boundingRect(contour)
+    x1 = b_rect[0]
+    x2 = b_rect[0] + b_rect[2]
+    y1 = b_rect[1]
+    y2 = b_rect[1] + b_rect[3]
+
+    return x1, y1, x2, y2
+
+
+def translate_contour(contour, x, y):
+    if len(contour.shape) == 3:
+        # dealing with OpenCV type contour
+        contour[:, :, 0] = contour[:, :, 0] - x
+        contour[:, :, 1] = contour[:, :, 1] - y
+    else:
+        # assume a simple array of x, y coordinates
+        contour[:, 0] = contour[:, 0] - x
+        contour[:, 1] = contour[:, 1] - y
+
+    return contour
+
+
+def crop_image(img, x1, y1, x2, y2):
+
+    # crop region and poly points for efficiency
+    crop_img = img[y1:y2, x1:x2]
+
+    return crop_img
+
+
+def generate_features(
+        hsv_img_as_numpy,
+        polygon_points,
+        label=None,
+        outer_margin_distance=None,
+        inset_center_distance=None,
+        region_file_path=None
+):
     """
     Given an hsv image represented as a numpy array, polygon points which represent a
     target entity, and a label, this function will return a set of important features about
@@ -505,41 +567,158 @@ def generate_features(hsv_img_as_numpy, polygon_points, label=None, region_file_
     :param hsv_img_as_numpy: numpy.array
     :param polygon_points: numpy.array
     :param label: str: indicating what the thing is
+    :param outer_margin_distance: int: Pixel distance from region's outer margin
+        from which extra features will be generated. Note: these features will
+        be added to the feature set, the margin will not be included for the region's
+        base features.
+    :param inset_center_distance: int: Pixel distance inside region's outer
+    margin from which extra features will be generated. Note: these features will
+    be added to the feature set.
     :param region_file_path: str: optional file path to save the cropped sub-region as PNG
     :return: a dictionary containing features and a label key
     """
     polygon_points = polygon_points.copy()
-    b_rect = cv2.boundingRect(polygon_points)
-    x1 = b_rect[0]
-    x2 = b_rect[0] + b_rect[2]
-    y1 = b_rect[1]
-    y2 = b_rect[1] + b_rect[3]
-
     mask = np.zeros(hsv_img_as_numpy.shape[0:2], dtype=np.uint8)
-
     cv2.drawContours(mask, [polygon_points], 0, 255, cv2.FILLED)
 
-    mask_img = cv2.bitwise_and(hsv_img_as_numpy, hsv_img_as_numpy, mask=mask)
+    if inset_center_distance is 'auto':
+        # calculate minimum contour dimension
+        box = cv2.minAreaRect(polygon_points)
+        cnt_w, cnt_h = box[1]
 
-    # crop region and poly points for efficiency
-    this_mask_img = mask_img[y1:y2, x1:x2]
-    if len(polygon_points.shape) == 3:
-        # dealing with OpenCV type contour
-        polygon_points[:, :, 0] = polygon_points[:, :, 0] - x1
-        polygon_points[:, :, 1] = polygon_points[:, :, 1] - y1
+        if cnt_w <= cnt_h:
+            min_dim = cnt_w
+        else:
+            min_dim = cnt_h
+
+        inset_center_distance = int(min_dim / 6)
+
+    if inset_center_distance is not None:
+        center_mask = cv2.erode(
+            mask,
+            cross_strel,
+            iterations=inset_center_distance
+        )
+
+        if np.sum(center_mask > 0) <= 9:
+            # the orig region was likely very spindly and eroded to nothing
+            # we'll say the "center" for these is equal to the orig region
+            center_mask = mask.copy()
+
+        _, center_contours, _ = cv2.findContours(
+            center_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        # eroded contour may be broken into pieces, find largest piece
+        largest_center_area = 0
+        center_contour = center_contours[0]
+        for c_idx, c in enumerate(center_contours):
+            c_mask = np.zeros(mask.shape[0:2], dtype=np.uint8)
+            cv2.drawContours(c_mask, center_contours, c_idx, 255, -1)
+
+            area = np.sum(c_mask > 0)
+
+            if area > largest_center_area:
+                largest_center_area = area
+                center_contour = center_contours[c_idx]
     else:
-        # assume a simple array of x, y coordinates
-        polygon_points[:, 0] = polygon_points[:, 0] - x1
-        polygon_points[:, 1] = polygon_points[:, 1] - y1
+        center_contour = None
 
-    crop_mask = np.zeros(this_mask_img.shape[0:2], dtype=np.uint8)
+    if outer_margin_distance is not None:
+        dilate_mask = cv2.dilate(
+            mask,
+            np.ones((3, 3)),
+            iterations=outer_margin_distance
+        )
+        _, contours, _ = cv2.findContours(
+            dilate_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
 
-    cv2.drawContours(crop_mask, [polygon_points], 0, 255, cv2.FILLED)
+        # find bounding coordinates of dilated mask
+        x1, y1, x2, y2 = get_bounding_rect(contours[0])
 
-    target_features = get_target_features(this_mask_img, mask=crop_mask)
+        # crop given image
+        crop_img = crop_image(hsv_img_as_numpy, x1, y1, x2, y2)
+
+        # translate the dilated contour to cropped dimensions
+        cropped_dilated_contour = translate_contour(contours[0], x1, y1)
+
+        # translate the orig contour to cropped dimensions
+        cropped_contour = translate_contour(polygon_points, x1, y1)
+
+        # draw the cropped contour
+        crop_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
+        cv2.drawContours(crop_mask, [cropped_contour], 0, 255, cv2.FILLED)
+
+        # draw the cropped dilated contour
+        crop_dilate_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
+        cv2.drawContours(
+            crop_dilate_mask,
+            [cropped_dilated_contour],
+            0,
+            255,
+            cv2.FILLED
+        )
+
+        # remove the orig contour area from the dilated contour to get
+        # just the margin mask
+        margin_mask = cv2.bitwise_and(
+            crop_dilate_mask,
+            crop_dilate_mask,
+            mask=~crop_mask
+        )
+    else:
+        # crop to given mask (not dilated)
+        x1, y1, x2, y2 = get_bounding_rect(polygon_points)
+
+        # crop given image
+        crop_img = crop_image(hsv_img_as_numpy, x1, y1, x2, y2)
+
+        # translate the contour to cropped dimensions
+        cropped_contour = translate_contour(polygon_points, x1, y1)
+
+        # draw the cropped contour
+        crop_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
+        cv2.drawContours(crop_mask, [cropped_contour], 0, 255, cv2.FILLED)
+
+        margin_mask = None
+
+    target_features = get_target_features(crop_img, mask=crop_mask)
+
+    if inset_center_distance is not None:
+        # translate the center contour to cropped dimensions
+        cropped_center_contour = translate_contour(center_contour, x1, y1)
+
+        # draw cropped center contour
+        crop_center_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
+        cv2.drawContours(
+            crop_center_mask,
+            [cropped_center_contour],
+            0,
+            255,
+            cv2.FILLED
+        )
+
+        center_features = get_target_features(crop_img, mask=crop_center_mask)
+        center_features = center_features.add_prefix('center_')
+        target_features = pd.concat([target_features, center_features])
+
+    if outer_margin_distance is not None:
+        margin_features = get_target_features(
+            crop_img,
+            mask=margin_mask
+        )
+        margin_features = margin_features.add_prefix('margin_')
+
+        target_features = pd.concat([target_features, margin_features])
 
     if region_file_path is not None:
-        cv2.imwrite(region_file_path, cv2.cvtColor(this_mask_img, cv2.COLOR_HSV2BGR))
+        crop_mask_img = cv2.bitwise_and(crop_img, crop_img, mask=crop_mask)
+        cv2.imwrite(region_file_path, cv2.cvtColor(crop_mask_img, cv2.COLOR_HSV2BGR))
 
     results = target_features.to_dict()
     results['label'] = label
