@@ -16,69 +16,46 @@ HSV_RANGES = {
     'red': [
         {
             'lower': np.array([0, 39, 64]),
-            'upper': np.array([20, 255, 255])
+            'upper': np.array([19, 255, 255])
         },
         {
-            'lower': np.array([161, 39, 64]),
-            'upper': np.array([180, 255, 255])
+            'lower': np.array([160, 39, 64]),
+            'upper': np.array([179, 255, 255])
         }
     ],
     # yellow is a minor color
     'yellow': [
         {
-            'lower': np.array([21, 39, 64]),
-            'upper': np.array([40, 255, 255])
+            'lower': np.array([20, 39, 64]),
+            'upper': np.array([39, 255, 255])
         }
     ],
     # green is a major color
     'green': [
         {
-            'lower': np.array([41, 39, 64]),
-            'upper': np.array([80, 255, 255])
+            'lower': np.array([40, 39, 64]),
+            'upper': np.array([79, 255, 255])
         }
     ],
     # cyan is a minor color
     'cyan': [
         {
-            'lower': np.array([81, 39, 64]),
-            'upper': np.array([100, 255, 255])
+            'lower': np.array([80, 39, 64]),
+            'upper': np.array([99, 255, 255])
         }
     ],
     # blue is a major color
     'blue': [
         {
-            'lower': np.array([101, 39, 64]),
-            'upper': np.array([140, 255, 255])
+            'lower': np.array([100, 39, 64]),
+            'upper': np.array([139, 255, 255])
         }
     ],
     # violet is a minor color
     'violet': [
         {
-            'lower': np.array([141, 39, 64]),
-            'upper': np.array([160, 255, 255])
-        }
-    ],
-    # next are the simple versions of RGB, with no intermediate colors
-    'redish': [
-        {
-            'lower': np.array([0, 39, 64]),
-            'upper': np.array([30, 255, 255])
-        },
-        {
-            'lower': np.array([151, 39, 64]),
-            'upper': np.array([180, 255, 255])
-        }
-    ],
-    'greenish': [
-        {
-            'lower': np.array([31, 39, 64]),
-            'upper': np.array([90, 255, 255])
-        }
-    ],
-    'bluish': [
-        {
-            'lower': np.array([91, 39, 64]),
-            'upper': np.array([150, 255, 255])
+            'lower': np.array([140, 39, 64]),
+            'upper': np.array([159, 255, 255])
         }
     ],
     # next are the monochrome ranges
@@ -86,33 +63,21 @@ HSV_RANGES = {
     'black': [
         {
             'lower': np.array([0, 0, 0]),
-            'upper': np.array([180, 255, 63])
+            'upper': np.array([179, 255, 63])
         }
     ],
     # gray is all H values, lower 15% of S, & between 11-89% of V
     'gray': [
         {
             'lower': np.array([0, 0, 64]),
-            'upper': np.array([180, 38, 228])
+            'upper': np.array([179, 38, 228])
         }
     ],
     # white is all H values, lower 15% of S, & upper 10% of V
     'white': [
         {
             'lower': np.array([0, 0, 229]),
-            'upper': np.array([180, 38, 255])
-        }
-    ],
-    'light': [
-        {
-            'lower': np.array([0, 0, 128]),
-            'upper': np.array([180, 255, 255])
-        }
-    ],
-    'dark': [
-        {
-            'lower': np.array([0, 0, 0]),
-            'upper': np.array([180, 255, 127])
+            'upper': np.array([179, 38, 255])
         }
     ]
 }
