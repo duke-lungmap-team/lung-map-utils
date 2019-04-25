@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cv_color_features',
-    version='1.3.0',
+    version='1.4.0',
     packages=['cv_color_features'],
     license='BSD 2-Clause License',
     long_description=open('README.md').read(),
