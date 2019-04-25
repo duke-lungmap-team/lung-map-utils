@@ -190,7 +190,7 @@ def get_target_features(hsv_img, mask=None):
     values.append(np.var(v))
 
     if mask is not None:
-        _, contours, _ = cv2.findContours(
+        contours, _ = cv2.findContours(
             mask,
             cv2.RETR_EXTERNAL,
             cv2.CHAIN_APPROX_SIMPLE
@@ -303,7 +303,7 @@ def get_color_features(hsv_img, mask=None):
         # grandchildren we want to consider as being at the root level. For
         # this, OpenCV has a retrieval method 'RETR_CCOMP', where only these
         # 2 levels are used
-        new_mask, contours, hierarchy = cv2.findContours(
+        contours, hierarchy = cv2.findContours(
             thresh,
             cv2.RETR_CCOMP,
             cv2.CHAIN_APPROX_SIMPLE
@@ -570,7 +570,7 @@ def generate_features(
             # we'll say the "center" for these is equal to the orig region
             center_mask = mask.copy()
 
-        _, center_contours, _ = cv2.findContours(
+        center_contours, _ = cv2.findContours(
             center_mask,
             cv2.RETR_EXTERNAL,
             cv2.CHAIN_APPROX_SIMPLE
@@ -597,7 +597,7 @@ def generate_features(
             np.ones((3, 3)),
             iterations=outer_margin_distance
         )
-        _, contours, _ = cv2.findContours(
+        contours, _ = cv2.findContours(
             dilate_mask,
             cv2.RETR_EXTERNAL,
             cv2.CHAIN_APPROX_SIMPLE
