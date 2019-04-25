@@ -9,9 +9,9 @@ setup(
     author='Scott White',
     description='Utility library to generate feature metrics from regions in color images.',
     install_requires=[
-        'numpy (>=1.13)',
-        'opencv-python (>=3.2.0.7)',
-        'scipy (>=0.19.1)',
-        'pandas (>=0.19.2)'
+        'numpy (>=1.16)',
+        'opencv-python (>=4.1)',
+        'scipy (>=1.2)',
+        'pandas (>=0.24)'
     ]
 )
