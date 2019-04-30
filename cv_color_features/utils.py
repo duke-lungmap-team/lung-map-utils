@@ -6,10 +6,10 @@ except ImportError:
     import cv2
 import pandas as pd
 from scipy.spatial.distance import pdist
+import cv2_extras as cv2x
 
 np.seterr(all='warn')
 
-cross_strel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
 
 HSV_RANGES = {
     # red is a major color
@@ -82,12 +82,8 @@ HSV_RANGES = {
     ]
 }
 
-def calc_distance(x1, y1, x2, y2):
-    dist = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-    return dist
 
-
-def create_mask(hsv_img, colors):
+def create_color_mask(hsv_img, colors):
     """
     Creates a binary mask from HSV image using given colors.
     """
@@ -104,24 +100,6 @@ def create_mask(hsv_img, colors):
     return mask
 
 
-def get_hsv(hsv_img, mask=None):
-    """
-    Returns flattened hue, saturation, and values from given HSV image.
-    """
-    hue = hsv_img[:, :, 0].flatten()
-    sat = hsv_img[:, :, 1].flatten()
-    val = hsv_img[:, :, 2].flatten()
-
-    if mask is not None:
-        flat_mask = mask.flatten()
-
-        hue = hue[flat_mask > 0]
-        sat = sat[flat_mask > 0]
-        val = val[flat_mask > 0]
-
-    return hue, sat, val
-
-
 def get_color_profile(hsv_img, mask=None):
     """
     Finds color profile as pixel counts for color ranges in HSV_RANGES
@@ -136,7 +114,7 @@ def get_color_profile(hsv_img, mask=None):
     Raises:
         tbd
     """
-    h, s, v = get_hsv(hsv_img, mask)
+    h, s, v = cv2x.get_flat_hsv_channels(hsv_img, mask)
 
     color_profile = {}
 
@@ -165,7 +143,7 @@ def get_color_profile(hsv_img, mask=None):
 
 
 def get_target_features(hsv_img, mask=None):
-    h, s, v = get_hsv(hsv_img, mask)
+    h, s, v = cv2x.get_flat_hsv_channels(hsv_img, mask)
     s = s / 255.0
     v = v / 255.0
     color_features = get_color_features(hsv_img, mask=mask)
@@ -248,7 +226,7 @@ def get_color_features(hsv_img, mask=None):
         tot_px = hsv_img.shape[0] * hsv_img.shape[1]
 
     # corner to corner distance used to normalize sub-contour distance metrics
-    diag_distance = calc_distance(0, 0, hsv_img.shape[0], hsv_img.shape[1])
+    diag_distance = cv2x.calculate_distance(0, 0, hsv_img.shape[0], hsv_img.shape[1])
 
     color_features = {}
 
@@ -256,7 +234,7 @@ def get_color_features(hsv_img, mask=None):
         color_percent = float(c_prof[color]) / tot_px
 
         # create color mask & apply it
-        color_mask = create_mask(hsv_img, [color])
+        color_mask = create_color_mask(hsv_img, [color])
 
         # apply user specified mask
         if mask is not None:
@@ -437,7 +415,7 @@ def get_color_features(hsv_img, mask=None):
                 cv2.FILLED,
                 hierarchy=hierarchy
             )
-            lc_h, lc_s, lc_v = get_hsv(hsv_img, mask)
+            lc_h, lc_s, lc_v = cv2x.get_flat_hsv_channels(hsv_img, mask)
             lc_s = lc_s / 255.0
             lc_v = lc_v / 255.0
 
@@ -486,37 +464,6 @@ def get_color_features(hsv_img, mask=None):
     return color_features
 
 
-def get_bounding_rect(contour):
-    b_rect = cv2.boundingRect(contour)
-    x1 = b_rect[0]
-    x2 = b_rect[0] + b_rect[2]
-    y1 = b_rect[1]
-    y2 = b_rect[1] + b_rect[3]
-
-    return x1, y1, x2, y2
-
-
-def translate_contour(contour, x, y):
-    if len(contour.shape) == 3:
-        # dealing with OpenCV type contour
-        contour[:, :, 0] = contour[:, :, 0] - x
-        contour[:, :, 1] = contour[:, :, 1] - y
-    else:
-        # assume a simple array of x, y coordinates
-        contour[:, 0] = contour[:, 0] - x
-        contour[:, 1] = contour[:, 1] - y
-
-    return contour
-
-
-def crop_image(img, x1, y1, x2, y2):
-
-    # crop region and poly points for efficiency
-    crop_img = img[y1:y2, x1:x2]
-
-    return crop_img
-
-
 def generate_features(
         hsv_img_as_numpy,
         polygon_points,
@@ -561,7 +508,7 @@ def generate_features(
     if inset_center_distance is not None:
         center_mask = cv2.erode(
             mask,
-            cross_strel,
+            cv2x.cross_strel,
             iterations=inset_center_distance
         )
 
@@ -604,16 +551,16 @@ def generate_features(
         )
 
         # find bounding coordinates of dilated mask
-        x1, y1, x2, y2 = get_bounding_rect(contours[0])
+        x1, y1, x2, y2 = cv2x.get_bounding_rect(contours[0])
 
         # crop given image
-        crop_img = crop_image(hsv_img_as_numpy, x1, y1, x2, y2)
+        crop_img = cv2x.crop_image(hsv_img_as_numpy, x1, y1, x2, y2)
 
         # translate the dilated contour to cropped dimensions
-        cropped_dilated_contour = translate_contour(contours[0], x1, y1)
+        cropped_dilated_contour = cv2x.translate_contour(contours[0], x1, y1)
 
         # translate the orig contour to cropped dimensions
-        cropped_contour = translate_contour(polygon_points, x1, y1)
+        cropped_contour = cv2x.translate_contour(polygon_points, x1, y1)
 
         # draw the cropped contour
         crop_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
@@ -638,13 +585,13 @@ def generate_features(
         )
     else:
         # crop to given mask (not dilated)
-        x1, y1, x2, y2 = get_bounding_rect(polygon_points)
+        x1, y1, x2, y2 = cv2x.get_bounding_rect(polygon_points)
 
         # crop given image
-        crop_img = crop_image(hsv_img_as_numpy, x1, y1, x2, y2)
+        crop_img = cv2x.crop_image(hsv_img_as_numpy, x1, y1, x2, y2)
 
         # translate the contour to cropped dimensions
-        cropped_contour = translate_contour(polygon_points, x1, y1)
+        cropped_contour = cv2x.translate_contour(polygon_points, x1, y1)
 
         # draw the cropped contour
         crop_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
@@ -656,7 +603,7 @@ def generate_features(
 
     if inset_center_distance is not None:
         # translate the center contour to cropped dimensions
-        cropped_center_contour = translate_contour(center_contour, x1, y1)
+        cropped_center_contour = cv2x.translate_contour(center_contour, x1, y1)
 
         # draw cropped center contour
         crop_center_mask = np.zeros(crop_img.shape[0:2], dtype=np.uint8)
@@ -685,7 +632,7 @@ def generate_features(
         crop_mask_img = cv2.bitwise_and(crop_img, crop_img, mask=crop_mask)
         cv2.imwrite(region_file_path, cv2.cvtColor(crop_mask_img, cv2.COLOR_HSV2BGR))
 
-    results = target_features.to_dict()
+    results = dict(target_features.to_dict())
     results['label'] = label
 
     return results
