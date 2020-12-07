@@ -12,7 +12,7 @@ setup(
         'numpy (>=1.16)',
         'opencv-python (>=4.1)',
         'scipy (>=1.2)',
-        'pandas (>=0.24)'
+        'pandas (>=0.24)',
         'cv2_extras (>=0.5.4)'
     ]
 )
