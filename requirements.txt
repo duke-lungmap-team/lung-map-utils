@@ -2,4 +2,4 @@ numpy>=1.16
 opencv-python>=4.1
 scipy>=1.2
 pandas>=0.24
-cv2-extras
+cv2-extras>=0.5.4

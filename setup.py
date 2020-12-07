@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cv_color_features',
-    version='1.5.0',
+    version='1.5.1',
     packages=['cv_color_features'],
     license='BSD 2-Clause License',
     long_description=open('README.md').read(),
@@ -13,5 +13,6 @@ setup(
         'opencv-python (>=4.1)',
         'scipy (>=1.2)',
         'pandas (>=0.24)'
+        'cv2_extras (>=0.5.4)'
     ]
 )
